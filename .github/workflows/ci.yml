@@ -22,7 +22,7 @@ jobs:
     name: Lint & Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@nightly
         with:
@@ -65,7 +65,7 @@ jobs:
       HF_TOKEN: ${{ secrets.HF_TOKEN_HUB_CI }}
       HF_ENDPOINT: https://hub-ci.huggingface.co
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -95,7 +95,7 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install system deps
@@ -116,7 +116,7 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install system deps
@@ -138,7 +138,7 @@ jobs:
       HF_TOKEN: ${{ secrets.HF_TOKEN_HUB_CI }}
       HF_ENDPOINT: https://hub-ci.huggingface.co
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -203,7 +203,7 @@ jobs:
       HF_TOKEN: ${{ secrets.HF_TOKEN_HUB_CI }}
       HF_ENDPOINT: https://hub-ci.huggingface.co
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 

@@ -79,6 +79,34 @@ cargo build --release --features fuse,nfs
 
 Binaries: `target/release/llmfs-mount`, `target/release/llmfs-mount-nfs`, `target/release/llmfs-mount-fuse`
 
+### Build .deb and .rpm packages
+
+To build Debian/Ubuntu (`.deb`) and Red Hat/Fedora (`.rpm`) packages, install the packaging tools first:
+
+```bash
+cargo install cargo-deb cargo-generate-rpm
+```
+
+Then run:
+
+```bash
+make package
+```
+
+This builds all release binaries and produces both packages:
+- `target/debian/llmfs-mount_<version>-1_amd64.deb`
+- `target/generate-rpm/llmfs-mount-<version>-1.x86_64.rpm`
+
+Install with:
+
+```bash
+# Debian / Ubuntu
+sudo dpkg -i target/debian/llmfs-mount_*.deb
+
+# Red Hat / Fedora
+sudo rpm -i target/generate-rpm/llmfs-mount-*.rpm
+```
+
 ## Best for / Not for
 
 **Best for:**

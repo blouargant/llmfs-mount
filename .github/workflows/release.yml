@@ -44,6 +44,9 @@ jobs:
           echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
           echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
 
+      - name: Install packaging tools
+        run: cargo install cargo-deb cargo-generate-rpm
+
       - name: Build
         run: |
           T="${{ matrix.target }}"
@@ -52,6 +55,12 @@ jobs:
           cargo build --release --target $T --no-default-features --features nfs,vendored-openssl --bin llmfs-mount-nfs
           cargo build --release --target $T --no-default-features --features vendored-openssl --bin llmfs-mount
 
+      - name: Build .deb package
+        run: cargo deb --no-build --no-strip --target ${{ matrix.target }}
+
+      - name: Build .rpm package
+        run: cargo generate-rpm --target ${{ matrix.target }}
+
       - name: Package
         run: |
           mkdir -p dist
@@ -59,6 +68,8 @@ jobs:
             cp target/${{ matrix.target }}/release/$bin dist/${bin}-${{ matrix.arch }}-linux
           done
           chmod +x dist/*
+          cp target/${{ matrix.target }}/debian/*.deb dist/
+          cp target/${{ matrix.target }}/generate-rpm/*.rpm dist/
 
       - uses: actions/upload-artifact@v4
         with:

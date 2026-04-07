@@ -63,3 +63,31 @@ path = "src/bin/llmfs-mount.rs"
 name = "llmfs-mount-fuse-sidecar"
 path = "src/bin/llmfs-mount-fuse-sidecar.rs"
 required-features = ["fuse"]
+
+[package.metadata.deb]
+maintainer = "Bertrand Louargant <blouargant@users.noreply.github.com>"
+section = "utils"
+priority = "optional"
+depends = "libfuse3-3, ca-certificates"
+assets = [
+    ["target/release/llmfs-mount",              "usr/bin/llmfs-mount",              "755"],
+    ["target/release/llmfs-mount-fuse",          "usr/bin/llmfs-mount-fuse",          "755"],
+    ["target/release/llmfs-mount-fuse-sidecar",  "usr/bin/llmfs-mount-fuse-sidecar",  "755"],
+    ["target/release/llmfs-mount-nfs",           "usr/bin/llmfs-mount-nfs",           "755"],
+    ["README.md",                                "usr/share/doc/llmfs-mount/README.md", "644"],
+    ["LICENSE",                                  "usr/share/doc/llmfs-mount/LICENSE",   "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/llmfs-mount",              dest = "/usr/bin/llmfs-mount",              mode = "755" },
+    { source = "target/release/llmfs-mount-fuse",          dest = "/usr/bin/llmfs-mount-fuse",          mode = "755" },
+    { source = "target/release/llmfs-mount-fuse-sidecar",  dest = "/usr/bin/llmfs-mount-fuse-sidecar",  mode = "755" },
+    { source = "target/release/llmfs-mount-nfs",           dest = "/usr/bin/llmfs-mount-nfs",           mode = "755" },
+    { source = "README.md",                                dest = "/usr/share/doc/llmfs-mount/README.md", mode = "644", doc = true },
+    { source = "LICENSE",                                  dest = "/usr/share/doc/llmfs-mount/LICENSE",   mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.requires]
+fuse3-libs = "*"
+ca-certificates = "*"

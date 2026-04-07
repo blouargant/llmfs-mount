@@ -110,7 +110,11 @@ fn main() {
 
 /// Replace the current process with the backend binary via execvp.
 /// Passes the ready-notification fd via the LLMFS_MOUNT_DAEMON_FD env var.
-fn exec_backend(backend: &std::path::Path, args: &[String], guard: &llmfs_mount::daemon::DaemonGuard) -> std::io::Error {
+fn exec_backend(
+    backend: &std::path::Path,
+    args: &[String],
+    guard: &llmfs_mount::daemon::DaemonGuard,
+) -> std::io::Error {
     use std::os::unix::process::CommandExt;
 
     // Clear CLOEXEC so the fd survives exec.
@@ -123,7 +127,10 @@ fn exec_backend(backend: &std::path::Path, args: &[String], guard: &llmfs_mount:
     let mut cmd = std::process::Command::new(backend);
     cmd.args(args);
     cmd.env("LLMFS_MOUNT_DAEMON_FD", guard.write_fd().to_string());
-    cmd.env("LLMFS_MOUNT_DAEMON_PID_FILE", guard.pid_file().to_string_lossy().as_ref());
+    cmd.env(
+        "LLMFS_MOUNT_DAEMON_PID_FILE",
+        guard.pid_file().to_string_lossy().as_ref(),
+    );
 
     // exec replaces the process, so this only returns on error.
     cmd.exec()

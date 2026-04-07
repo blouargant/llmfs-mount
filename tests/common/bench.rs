@@ -190,7 +190,10 @@ pub fn run_write_benchmark(mount_point: &str, size_bytes: usize) -> Result<Write
 
 /// Measure raw SingleFileCleaner::add_data() throughput — no FUSE, no kernel.
 /// This is the theoretical ceiling for streaming writes.
-pub async fn run_raw_cleaner_benchmark(xet: &llmfs_mount::xet::XetSessions, size_bytes: usize) -> Result<f64, BenchError> {
+pub async fn run_raw_cleaner_benchmark(
+    xet: &llmfs_mount::xet::XetSessions,
+    size_bytes: usize,
+) -> Result<f64, BenchError> {
     let size_mb = size_bytes as f64 / (1024.0 * 1024.0);
     let chunk = super::generate_pattern(1024 * 1024);
 

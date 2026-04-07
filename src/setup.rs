@@ -330,14 +330,12 @@ fn build_gitea(
     let gitea_endpoint = options
         .gitea_endpoint
         .as_deref()
-        .unwrap_or_else(|| {
-            panic!("--gitea-endpoint (or GITEA_ENDPOINT env var) is required for Gitea mounts")
-        });
+        .unwrap_or_else(|| panic!("--gitea-endpoint (or GITEA_ENDPOINT env var) is required for Gitea mounts"));
 
     let (id, prefix) = split_path_prefix(&repo_id).unwrap_or_else(|e| panic!("invalid gitea repo path: {e}"));
-    let (owner, repo_name) = id.split_once('/').unwrap_or_else(|| {
-        panic!("Gitea repo must be in owner/repo format, got: {id}")
-    });
+    let (owner, repo_name) = id
+        .split_once('/')
+        .unwrap_or_else(|| panic!("Gitea repo must be in owner/repo format, got: {id}"));
 
     let client = runtime.block_on(async {
         GiteaClient::new(
@@ -370,9 +368,9 @@ fn build_github(
     is_nfs: bool,
 ) -> MountSetup {
     let (id, prefix) = split_path_prefix(&repo_id).unwrap_or_else(|e| panic!("invalid github repo path: {e}"));
-    let (owner, repo_name) = id.split_once('/').unwrap_or_else(|| {
-        panic!("GitHub repo must be in owner/repo format, got: {id}")
-    });
+    let (owner, repo_name) = id
+        .split_once('/')
+        .unwrap_or_else(|| panic!("GitHub repo must be in owner/repo format, got: {id}"));
 
     let client = runtime.block_on(async {
         GitHubClient::new(
@@ -405,9 +403,9 @@ fn build_gitlab(
     is_nfs: bool,
 ) -> MountSetup {
     let (id, prefix) = split_path_prefix(&repo_id).unwrap_or_else(|e| panic!("invalid gitlab repo path: {e}"));
-    let (owner, repo_name) = id.split_once('/').unwrap_or_else(|| {
-        panic!("GitLab repo must be in owner/repo format, got: {id}")
-    });
+    let (owner, repo_name) = id
+        .split_once('/')
+        .unwrap_or_else(|| panic!("GitLab repo must be in owner/repo format, got: {id}"));
 
     let client = runtime.block_on(async {
         GitLabClient::new(
@@ -513,12 +511,7 @@ fn build_external_provider(
 }
 
 /// Build a HuggingFace-backed mount (original flow).
-fn build_hf(
-    runtime: tokio::runtime::Runtime,
-    source: Source,
-    options: MountOptions,
-    is_nfs: bool,
-) -> MountSetup {
+fn build_hf(runtime: tokio::runtime::Runtime, source: Source, options: MountOptions, is_nfs: bool) -> MountSetup {
     let (mount_point, source_kind, path_prefix) = match source {
         Source::Bucket { bucket_id, mount_point } => {
             let (id, prefix) = split_path_prefix(&bucket_id).unwrap_or_else(|e| panic!("invalid bucket path: {e}"));

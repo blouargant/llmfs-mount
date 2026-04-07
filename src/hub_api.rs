@@ -120,22 +120,13 @@ impl std::fmt::Display for SourceKind {
                 revision,
             } => write!(f, "{repo_type}/{repo_id}/{revision}"),
             Self::GiteaRepo {
-                owner,
-                repo,
-                revision,
-                ..
+                owner, repo, revision, ..
             } => write!(f, "gitea/{owner}/{repo}/{revision}"),
             Self::GitHubRepo {
-                owner,
-                repo,
-                revision,
-                ..
+                owner, repo, revision, ..
             } => write!(f, "github/{owner}/{repo}/{revision}"),
             Self::GitLabRepo {
-                owner,
-                repo,
-                revision,
-                ..
+                owner, repo, revision, ..
             } => write!(f, "gitlab/{owner}/{repo}/{revision}"),
         }
     }
@@ -795,7 +786,10 @@ impl HubApiClient {
     pub async fn get_cas_write_token(&self) -> Result<CasTokenInfo> {
         let bucket_id = match &self.source {
             SourceKind::Bucket { bucket_id } => bucket_id,
-            SourceKind::Repo { .. } | SourceKind::GiteaRepo { .. } | SourceKind::GitHubRepo { .. } | SourceKind::GitLabRepo { .. } => {
+            SourceKind::Repo { .. }
+            | SourceKind::GiteaRepo { .. }
+            | SourceKind::GitHubRepo { .. }
+            | SourceKind::GitLabRepo { .. } => {
                 return Err(Error::hub("write tokens not supported for repos"));
             }
         };
@@ -810,7 +804,10 @@ impl HubApiClient {
     pub async fn batch_operations(&self, ops: &[BatchOp]) -> Result<()> {
         let bucket_id = match &self.source {
             SourceKind::Bucket { bucket_id } => bucket_id,
-            SourceKind::Repo { .. } | SourceKind::GiteaRepo { .. } | SourceKind::GitHubRepo { .. } | SourceKind::GitLabRepo { .. } => {
+            SourceKind::Repo { .. }
+            | SourceKind::GiteaRepo { .. }
+            | SourceKind::GitHubRepo { .. }
+            | SourceKind::GitLabRepo { .. } => {
                 return Err(Error::hub("batch operations not supported for repos"));
             }
         };

@@ -8,9 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tracing::info;
 
 use crate::error::{Error, Result};
-use crate::hub_api::{
-    BatchOp, HeadFileInfo, HubOps, SourceKind, TreeEntry, mtime_from_str, send_with_retry,
-};
+use crate::hub_api::{BatchOp, HeadFileInfo, HubOps, SourceKind, TreeEntry, mtime_from_str, send_with_retry};
 use crate::xet::{DownloadStreamOps, StreamingWriterOps, XetOps};
 
 // ── Gitea API response types ──────────────────────────────────────────
@@ -105,11 +103,7 @@ impl GiteaClient {
         .await?;
 
         let info: GiteaRepoInfo = resp.json().await?;
-        let last_modified = info
-            .updated_at
-            .as_deref()
-            .map(mtime_from_str)
-            .unwrap_or(UNIX_EPOCH);
+        let last_modified = info.updated_at.as_deref().map(mtime_from_str).unwrap_or(UNIX_EPOCH);
 
         // Use the repo's default branch if no revision was specified.
         let effective_revision = if revision == "main" {
@@ -207,12 +201,7 @@ impl GiteaClient {
                 self.endpoint, self.owner, self.repo, self.revision, page,
             );
 
-            let resp = send_with_retry(
-                || self.auth(self.client.get(&url)),
-                "gitea tree listing",
-                false,
-            )
-            .await?;
+            let resp = send_with_retry(|| self.auth(self.client.get(&url)), "gitea tree listing", false).await?;
 
             let tree_resp: GiteaTreeResponse = resp.json().await?;
 
@@ -324,12 +313,7 @@ impl HubOps for GiteaClient {
             self.endpoint, self.owner, self.repo, api_path, self.revision,
         );
 
-        let resp = send_with_retry(
-            || self.auth(self.client.get(&url)),
-            "gitea head_file",
-            false,
-        )
-        .await;
+        let resp = send_with_retry(|| self.auth(self.client.get(&url)), "gitea head_file", false).await;
 
         let resp = match resp {
             Ok(r) => r,

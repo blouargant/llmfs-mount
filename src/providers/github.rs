@@ -8,9 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tracing::info;
 
 use crate::error::{Error, Result};
-use crate::hub_api::{
-    BatchOp, HeadFileInfo, HubOps, SourceKind, TreeEntry, mtime_from_str, send_with_retry,
-};
+use crate::hub_api::{BatchOp, HeadFileInfo, HubOps, SourceKind, TreeEntry, mtime_from_str, send_with_retry};
 
 // ── GitHub API response types ─────────────────────────────────────────
 
@@ -103,11 +101,7 @@ impl GitHubClient {
         .await?;
 
         let info: GitHubRepoInfo = resp.json().await?;
-        let last_modified = info
-            .updated_at
-            .as_deref()
-            .map(mtime_from_str)
-            .unwrap_or(UNIX_EPOCH);
+        let last_modified = info.updated_at.as_deref().map(mtime_from_str).unwrap_or(UNIX_EPOCH);
 
         let effective_revision = if revision == "main" {
             info.default_branch.unwrap_or_else(|| "main".to_string())
@@ -196,12 +190,7 @@ impl GitHubClient {
             self.api_base, self.owner, self.repo, self.revision,
         );
 
-        let resp = send_with_retry(
-            || self.auth(self.client.get(&url)),
-            "github tree listing",
-            false,
-        )
-        .await?;
+        let resp = send_with_retry(|| self.auth(self.client.get(&url)), "github tree listing", false).await?;
 
         let tree_resp: GitHubTreeResponse = resp.json().await?;
 
@@ -300,12 +289,7 @@ impl HubOps for GitHubClient {
             self.api_base, self.owner, self.repo, api_path, self.revision,
         );
 
-        let resp = send_with_retry(
-            || self.auth(self.client.get(&url)),
-            "github head_file",
-            false,
-        )
-        .await;
+        let resp = send_with_retry(|| self.auth(self.client.get(&url)), "github head_file", false).await;
 
         let resp = match resp {
             Ok(r) => r,
@@ -324,7 +308,9 @@ impl HubOps for GitHubClient {
     }
 
     async fn batch_operations(&self, _ops: &[BatchOp]) -> Result<()> {
-        Err(Error::hub("batch operations not supported for GitHub repos (read-only)"))
+        Err(Error::hub(
+            "batch operations not supported for GitHub repos (read-only)",
+        ))
     }
 
     async fn download_file_http(&self, path: &str, dest: &Path) -> Result<()> {

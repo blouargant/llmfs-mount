@@ -8,9 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tracing::info;
 
 use crate::error::{Error, Result};
-use crate::hub_api::{
-    BatchOp, HeadFileInfo, HubOps, SourceKind, TreeEntry, mtime_from_str, send_with_retry,
-};
+use crate::hub_api::{BatchOp, HeadFileInfo, HubOps, SourceKind, TreeEntry, mtime_from_str, send_with_retry};
 
 // ── GitLab API response types ─────────────────────────────────────────
 
@@ -196,12 +194,7 @@ impl GitLabClient {
                 self.api_base, self.project_id, self.revision, page,
             );
 
-            let resp = send_with_retry(
-                || self.auth(self.client.get(&url)),
-                "gitlab tree listing",
-                false,
-            )
-            .await?;
+            let resp = send_with_retry(|| self.auth(self.client.get(&url)), "gitlab tree listing", false).await?;
 
             // GitLab paginates via X-Next-Page header.
             let next_page = resp
@@ -311,12 +304,7 @@ impl HubOps for GitLabClient {
             self.api_base, self.project_id, encoded_path, self.revision,
         );
 
-        let resp = send_with_retry(
-            || self.auth(self.client.get(&url)),
-            "gitlab head_file",
-            false,
-        )
-        .await;
+        let resp = send_with_retry(|| self.auth(self.client.get(&url)), "gitlab head_file", false).await;
 
         let resp = match resp {
             Ok(r) => r,
@@ -335,7 +323,9 @@ impl HubOps for GitLabClient {
     }
 
     async fn batch_operations(&self, _ops: &[BatchOp]) -> Result<()> {
-        Err(Error::hub("batch operations not supported for GitLab repos (read-only)"))
+        Err(Error::hub(
+            "batch operations not supported for GitLab repos (read-only)",
+        ))
     }
 
     async fn download_file_http(&self, path: &str, dest: &Path) -> Result<()> {

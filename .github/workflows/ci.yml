@@ -1,0 +1,270 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint-test:
+    name: Lint & Unit Tests
+    runs-on:
+      group: llmfs-mount-ci-pub
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse3 libfuse3-dev
+
+      - name: Format check
+        run: cargo +nightly fmt --check
+
+      - name: Clippy (no features)
+        run: cargo clippy -- -D warnings
+
+      - name: Clippy (NFS)
+        run: cargo clippy --features nfs -- -D warnings
+
+      - name: Clippy (FUSE)
+        run: cargo clippy --features fuse -- -D warnings
+
+      - name: Clippy (all)
+        run: cargo clippy --features fuse,nfs -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --lib --features fuse,nfs
+
+  smoke-test:
+    name: Smoke Tests (FUSE + NFS)
+    runs-on:
+      group: llmfs-mount-ci-pub
+    needs: lint-test
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN_HUB_CI }}
+      HF_ENDPOINT: https://hub-ci.huggingface.co
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse3 libfuse3-dev nfs-common
+          echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
+
+      - name: Build release binaries
+        run: cargo build --release --features fuse,nfs
+
+      - name: Integration tests (buckets)
+        run: cargo test --release --test fuse_ops --test nfs_ops -- --test-threads=1 --nocapture
+
+      - name: Integration tests (repo mount)
+        env:
+          HF_ENDPOINT: https://huggingface.co
+        run: unset HF_TOKEN && cargo test --release --test repo_ops -- --test-threads=1 --nocapture
+
+  fsx:
+    name: fsx (data integrity)
+    runs-on:
+      group: llmfs-mount-ci-pub
+    needs: lint-test
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse3 libfuse3-dev
+          echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
+      - name: Build
+        run: cargo build --release --features fuse,nfs
+      - name: fsx
+        timeout-minutes: 10
+        run: cargo test --release --test fsx -- --test-threads=1 --nocapture
+
+  xfstests:
+    name: xfstests (filesystem exerciser)
+    runs-on:
+      group: llmfs-mount-ci-pub-m5dn-24xlarge
+    needs: lint-test
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse3 libfuse3-dev xfsprogs xfsdump attr libaio-dev uuid-dev acl bc
+          echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
+      - name: Build
+        run: cargo build --release --features fuse,nfs
+      - name: xfstests
+        timeout-minutes: 45
+        run: cargo test --release --test xfstests -- --test-threads=1 --nocapture
+
+  pjdfstest:
+    name: POSIX Compliance (pjdfstest)
+    runs-on:
+      group: llmfs-mount-ci-pub
+    needs: lint-test
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN_HUB_CI }}
+      HF_ENDPOINT: https://hub-ci.huggingface.co
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse3 libfuse3-dev autoconf automake gcc make perl
+          echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
+
+      - name: Build release binaries
+        run: cargo build --release --features fuse,nfs
+
+      - name: Run pjdfstest
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          cargo test --release --test pjdfstest -- --nocapture 2>&1 | tee pjdfstest_output.txt
+
+      - name: Post pjdfstest results
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CLEAN=$(sed 's/\x1b\[[0-9;]*m//g' pjdfstest_output.txt)
+          TABLES=$(echo "$CLEAN" | awk '
+            /^=====*$/ { inside=!inside; print; next }
+            inside { print }
+          ')
+          if [ -z "$TABLES" ]; then
+            echo "No pjdfstest table found in output"
+            exit 0
+          fi
+
+          PR="${{ github.event.pull_request.number }}"
+          MARKER="<!-- pjdfstest-results -->"
+          BODY="${MARKER}
+          ## POSIX Compliance (pjdfstest)
+
+          \`\`\`
+          ${TABLES}
+          \`\`\`"
+
+          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${PR}/comments" \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}" \
+              -X PATCH -f body="$BODY"
+            echo "Updated existing comment $COMMENT_ID"
+          else
+            gh pr comment "$PR" --body "$BODY"
+            echo "Created new comment"
+          fi
+
+  bench:
+    name: Benchmarks
+    runs-on:
+      group: llmfs-mount-ci-pub
+    needs: lint-test
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN_HUB_CI }}
+      HF_ENDPOINT: https://hub-ci.huggingface.co
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse3 libfuse3-dev nfs-common
+          echo 'user_allow_other' | sudo tee -a /etc/fuse.conf
+
+      - name: Build release binaries
+        run: cargo build --release --features fuse,nfs
+
+      - name: Install fio
+        run: sudo apt-get install -y fio
+
+      - name: Run benchmarks
+        timeout-minutes: 10
+        run: cargo test --release --test bench --test fio_bench -- --nocapture 2>&1 | tee bench_output.txt
+
+      - name: Post benchmark results
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Strip ANSI codes, then extract only ==== delimited blocks
+          CLEAN=$(sed 's/\x1b\[[0-9;]*m//g' bench_output.txt)
+          TABLES=$(echo "$CLEAN" | awk '
+            /^=====*$/ { inside=!inside; print; next }
+            inside { print }
+          ')
+          if [ -z "$TABLES" ]; then
+            echo "No benchmark table found in output"
+            exit 0
+          fi
+
+          PR="${{ github.event.pull_request.number }}"
+          MARKER="<!-- bench-results -->"
+          BODY="${MARKER}
+          ## Benchmark Results
+
+          \`\`\`
+          ${TABLES}
+          \`\`\`"
+
+          # Find existing comment with our marker
+          COMMENT_ID=$(gh api "repos/${{ github.repository }}/issues/${PR}/comments" \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | head -1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}" \
+              -X PATCH -f body="$BODY"
+            echo "Updated existing comment $COMMENT_ID"
+          else
+            gh pr comment "$PR" --body "$BODY"
+            echo "Created new comment"
+          fi

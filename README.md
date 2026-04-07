@@ -1,0 +1,321 @@
+# llmfs-mount
+
+> **This project is based on [hf-mount](https://github.com/huggingface/hf-mount) by [Hugging Face](https://huggingface.co), licensed under Apache-2.0.**
+
+<img width="1400" height="386" alt="image" src="https://github.com/user-attachments/assets/d68eac8c-4e28-4d2d-93b2-b049da846397" />
+
+Mount [Hugging Face Buckets](https://huggingface.co/docs/hub/storage-buckets) and repos as local filesystems. No download, no copy, no waiting.
+
+```bash
+llmfs-mount start bucket myuser/my-bucket /tmp/data
+```
+
+Also works with any model or dataset repo (read-only):
+
+```bash
+llmfs-mount start repo openai/gpt-oss-20b /tmp/gpt-oss
+```
+
+Commands will pick up your `HF_TOKEN` from the environment, or you can pass it explicitly with `--hf-token`.
+
+Then use your local folders as usual:
+```python
+from transformers import AutoModelForCausalLM
+model = AutoModelForCausalLM.from_pretrained("/tmp/gpt-oss")  # reads on demand, no download step
+```
+
+llmfs-mount exposes [Hugging Face Buckets](https://huggingface.co/docs/hub/storage-buckets) and [Hub repos](https://huggingface.co) as a local filesystem via FUSE or NFS. Files are fetched lazily on first read, so only the bytes your code actually touches ever hit the network.
+
+Two backends are available:
+- **NFS** (recommended) -- works everywhere, no root, no kernel extension
+- **FUSE** -- tighter kernel integration, requires root or [macFUSE](https://osxfuse.github.io/) on macOS
+
+Agentic storage: Agents don't require complex APIs or SDKs, they thrive on the filesystem: ls, cat, find, grep, and the power of composable UNIX pipelines.
+
+![llmfs-mount demo gif](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/hf-mount/demo.gif)
+
+## Install
+
+### Quick install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/blouargant/llmfs-mount/main/install.sh | sh
+```
+
+Installs `llmfs-mount` to `~/.local/bin/`. Set `INSTALL_DIR` to change the location. Supports Linux (x86_64, aarch64) and macOS (Apple Silicon).
+
+### Manual download
+
+Binaries are available on [GitHub Releases](https://github.com/blouargant/llmfs-mount/releases):
+
+| Platform | Daemon | NFS | FUSE |
+| --- | --- | --- | --- |
+| Linux x86_64 | `llmfs-mount-x86_64-linux` | `llmfs-mount-nfs-x86_64-linux` | `llmfs-mount-fuse-x86_64-linux` |
+| Linux aarch64 | `llmfs-mount-aarch64-linux` | `llmfs-mount-nfs-aarch64-linux` | `llmfs-mount-fuse-aarch64-linux` |
+| macOS Apple Silicon | `llmfs-mount-arm64-apple-darwin` | `llmfs-mount-nfs-arm64-apple-darwin` | `llmfs-mount-fuse-arm64-apple-darwin` |
+
+### System dependencies (FUSE only)
+
+The NFS backend has no system dependencies. For FUSE:
+
+**Linux**: `sudo apt-get install -y fuse3` (pre-built binaries only need the runtime; building from source also requires `libfuse3-dev`)
+
+**macOS**: install [macFUSE](https://osxfuse.github.io/) (`brew install macfuse`, requires reboot on first install)
+
+### Build from source
+
+Requires Rust 1.85+.
+
+```bash
+# NFS only (no system deps, works everywhere)
+cargo build --release --features nfs
+
+# FUSE (requires macFUSE on macOS, fuse3 on Linux)
+cargo build --release --features fuse
+
+# All backends
+cargo build --release --features fuse,nfs
+```
+
+Binaries: `target/release/llmfs-mount`, `target/release/llmfs-mount-nfs`, `target/release/llmfs-mount-fuse`
+
+## Best for / Not for
+
+**Best for:**
+- Loading models and datasets without downloading the full repo
+- Browsing repo contents (`ls`, `cat`, `find`) without cloning
+- Read-heavy ML workloads (training, inference, evaluation)
+- Environments where disk space is limited
+
+**Not for:**
+- General-purpose networked filesystem (no multi-writer support, no file locking)
+- Latency-sensitive random I/O (first reads require network round-trips)
+- Workloads that need strong consistency (files can be stale for up to 10 s)
+- Heavy concurrent writes from multiple mounts (last writer wins, no conflict detection)
+- Editing files with text editors in default (streaming) mode (use `--advanced-writes`)
+
+See [Consistency model](#consistency-model) for details.
+
+## Usage
+
+### Mount a repo (read-only)
+
+```bash
+# Public model (no token needed)
+llmfs-mount start repo openai/gpt-oss-20b /tmp/model
+
+# Private model
+llmfs-mount start --hf-token $HF_TOKEN repo myorg/my-private-model /tmp/model
+
+# Dataset
+llmfs-mount start repo datasets/open-index/hacker-news /tmp/hn
+
+# Specific revision
+llmfs-mount start repo openai-community/gpt2 /tmp/gpt2 --revision v1.0
+
+# Subfolder only
+llmfs-mount start repo openai-community/gpt2/onnx /tmp/onnx
+```
+
+### Mount a Bucket (read-write)
+
+[Buckets](https://huggingface.co/docs/hub/storage-buckets) are S3-like object storage on the Hub, designed for large-scale mutable data (training checkpoints, logs, artifacts) without git version control.
+
+```bash
+llmfs-mount start --hf-token $HF_TOKEN bucket myuser/my-bucket /tmp/data
+
+# Read-only
+llmfs-mount start --hf-token $HF_TOKEN --read-only bucket myuser/my-bucket /tmp/data
+
+# Subfolder only
+llmfs-mount start --hf-token $HF_TOKEN bucket myuser/my-bucket/checkpoints /tmp/ckpts
+```
+
+### Manage mounts
+
+```bash
+llmfs-mount status                  # list running mounts
+llmfs-mount stop /tmp/data          # stop and unmount
+```
+
+Logs are written to `~/.llmfs-mount/logs/`. PID files are stored in `~/.llmfs-mount/pids/`.
+
+### FUSE backend
+
+By default, `llmfs-mount` uses NFS. Pass `--fuse` for tighter kernel integration (page cache invalidation, per-file metadata revalidation). Requires `fuse3` on Linux or [macFUSE](https://osxfuse.github.io/) on macOS.
+
+```bash
+llmfs-mount start --fuse --hf-token $HF_TOKEN bucket myuser/my-bucket /mnt/data
+```
+
+### Foreground mode
+
+For scripts, containers, or debugging, use the backend binaries directly (they run in the foreground):
+
+```bash
+llmfs-mount-nfs repo gpt2 /tmp/gpt2
+llmfs-mount-fuse --hf-token $HF_TOKEN bucket myuser/my-bucket /mnt/data
+```
+
+### macOS: launch as a daemon with launchd
+
+To have `llmfs-mount` start automatically on login, create a LaunchAgent:
+
+```bash
+label=com.blouargant.llmfs-mount
+
+mkdir -p ~/Library/LaunchAgents
+
+cat > ~/Library/LaunchAgents/$label.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$label</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$HOME/.local/bin/llmfs-mount-nfs</string>
+        <string>repo</string>
+        <string>openai/gpt-oss-20b</string>
+        <string>/tmp/gpt-oss</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/llmfs-mount.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/llmfs-mount.log</string>
+</dict>
+</plist>
+EOF
+
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/$label.plist
+```
+
+To stop: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/$label.plist`
+
+### Unmount
+
+```bash
+umount /tmp/data                 # NFS or FUSE (macOS)
+fusermount -u /tmp/data          # FUSE (Linux)
+llmfs-mount stop /tmp/data          # daemon mounts
+```
+
+### Options
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--hf-token` | `$HF_TOKEN` | HF API token (required for private repos/buckets) |
+| `--hub-endpoint` | `https://huggingface.co` | Hub API endpoint |
+| `--cache-dir` | `/tmp/llmfs-mount-cache` | Local cache directory |
+| `--cache-size` | `10000000000` (~10 GB) | Max on-disk chunk cache size in bytes |
+| `--read-only` | `false` | Mount read-only (always on for repos) |
+| `--advanced-writes` | `false` | Enable staging files + async flush (random writes, seek, overwrite) |
+| `--poll-interval-secs` | `30` | Remote change polling interval (0 to disable) |
+| `--max-threads` | `16` | Maximum FUSE worker threads (Linux only) |
+| `--metadata-ttl-ms` | `10000` | How long file metadata is cached before re-checking (ms) |
+| `--metadata-ttl-minimal` | `false` | Re-check on every access (maximum freshness, lower throughput) |
+| `--flush-debounce-ms` | `2000` | Advanced writes: flush debounce delay (ms) |
+| `--flush-max-batch-window-ms` | `30000` | Advanced writes: max flush batch window (ms) |
+| `--no-disk-cache` | `false` | Disable local chunk cache (every read fetches from HF) |
+| `--no-filter-os-files` | `false` | Stop filtering OS junk files (.DS_Store, Thumbs.db, etc.) |
+| `--uid` / `--gid` | current user | Override UID/GID for mounted files |
+| `--fuse-owner-only` | `false` | Restrict mount access to the mounting user only (FUSE only; by default all users can access, which requires `user_allow_other` in /etc/fuse.conf) |
+| `--token-file` | | Path to a token file (re-read on each request for credential rotation) |
+
+### Logging
+
+```bash
+RUST_LOG=llmfs_mount=debug llmfs-mount-fuse repo gpt2 /mnt/gpt2
+```
+
+## Features
+
+- **FUSE & NFS backends** -- FUSE for standard Linux/macOS, NFS for environments without `/dev/fuse`
+- **Lazy loading** -- files are fetched on demand, not eagerly downloaded
+- **Subfolder mounting** -- mount only a subdirectory (e.g. `user/model/ckpt/v2`)
+- **Simple writes** (default) -- append-only, in-memory, synchronous upload on close
+- **Advanced writes** (`--advanced-writes`) -- staging files on disk, random writes + seek, async debounced flush
+- **Remote sync** -- background polling detects remote changes and updates the local view
+- **POSIX metadata** -- chmod, chown, timestamps, symlinks (in-memory only, lost on unmount)
+
+## Consistency model
+
+llmfs-mount provides **eventual consistency** with remote changes. There is no push notification from the Hub; all freshness relies on client-side polling.
+
+### Reads
+
+Files can be stale for up to `--metadata-ttl-ms` (default 10 s) after a remote update. Two mechanisms detect changes:
+
+1. **Metadata revalidation** (FUSE only) -- when the per-file TTL expires, the next access checks the Hub. If the file changed, cached data is invalidated.
+2. **Background polling** (default every 30 s) -- lists the full tree and detects additions, modifications, and deletions.
+
+### Writes
+
+| | Streaming (default) | Advanced (`--advanced-writes`) |
+| --- | --- | --- |
+| Write pattern | Append-only (sequential) | Random writes, seek, overwrite |
+| Storage | In-memory buffer | Local staging file on disk |
+| Modify existing files | Overwrite only (O_TRUNC) | Yes (downloads file first) |
+| Durability | On close | Async, debounced (2 s / 30 s max) |
+| Disk space needed | None | Full file size per open file |
+
+**Streaming mode** buffers writes in memory and uploads on `close()`. A crash before close means data loss.
+
+> **Note:** Streaming mode does not support text editors (vim, nano, emacs). Editors that use
+> unlink+create save patterns will be blocked (`EPERM`) to prevent data loss.
+> Use `--advanced-writes` for interactive editing.
+
+**Advanced mode** downloads the full file to local disk before allowing edits. After `close()`, dirty files are flushed asynchronously. A crash before flush completes means data loss.
+
+### FUSE vs NFS
+
+| | FUSE | NFS |
+| --- | --- | --- |
+| Metadata revalidation | Per-file, within TTL | No (NFS uses file handles) |
+| Page cache invalidation | Supported | Not supported by NFS protocol |
+| Staleness window | ~10 s | Up to poll interval (30 s) |
+| Write mode | Streaming by default | Advanced always |
+
+## How it works
+
+llmfs-mount sits between your application and the Hugging Face Hub. It presents a standard filesystem interface (FUSE or NFS) and translates file operations into Hub API calls and storage fetches.
+
+Reads go through an adaptive prefetch buffer that starts small and grows with sequential access. Writes are uploaded to HF storage and committed via the Hub API. A background poll loop keeps the local view in sync with remote changes.
+
+Built on [xet-core](https://github.com/huggingface/xet-core) for content-addressed storage and efficient file transfers, and [fuser](https://github.com/cberner/fuser) for the FUSE implementation.
+
+## Kubernetes
+
+Use the [hf-csi-driver](https://github.com/huggingface/hf-csi-driver) to mount Buckets and repos as Kubernetes volumes. The CSI driver runs llmfs-mount inside a DaemonSet and exposes mounts to pods via the Container Storage Interface.
+
+```bash
+helm install hf-csi oci://ghcr.io/huggingface/charts/hf-csi-driver
+```
+
+See the [hf-csi-driver README](https://github.com/huggingface/hf-csi-driver#readme) for setup and examples.
+
+## Testing
+
+```bash
+# Unit tests (no network, no token)
+cargo test --lib --features fuse,nfs
+
+# Integration tests (require HF_TOKEN and FUSE)
+HF_TOKEN=... cargo test --release --features fuse,nfs --test fuse_ops -- --test-threads=1 --nocapture
+HF_TOKEN=... cargo test --release --features fuse,nfs --test nfs_ops -- --test-threads=1 --nocapture
+
+# Repo mount test (public repo, no token needed)
+cargo test --release --features nfs --test repo_ops -- --test-threads=1 --nocapture
+
+# Benchmarks
+HF_TOKEN=... cargo test --release --features fuse,nfs --test bench -- --nocapture
+```
+
+## License
+
+Apache-2.0

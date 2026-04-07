@@ -1,0 +1,65 @@
+[package]
+name = "llmfs-mount"
+version = "0.3.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Mount Hugging Face Buckets and repos as a local filesystem using FUSE or NFS"
+repository = "https://github.com/blouargant/llmfs-mount"
+keywords = ["fuse", "nfs", "huggingface", "filesystem", "mount"]
+categories = ["filesystem", "command-line-utilities"]
+
+[dependencies]
+# xet-core crates
+xet-client = { git = "https://github.com/huggingface/xet-core.git", rev = "56faae12" }
+xet-core-structures = { git = "https://github.com/huggingface/xet-core.git", rev = "56faae12" }
+xet-data = { git = "https://github.com/huggingface/xet-core.git", rev = "56faae12" }
+xet-runtime = { git = "https://github.com/huggingface/xet-core.git", rev = "56faae12" }
+
+# External crates
+async-trait = "0.1"
+bytes = "1"
+chrono = "0.4"
+clap = { version = "4", features = ["derive", "env"] }
+ctrlc = { version = "3", features = ["termination"] }
+fuser = { version = "0.17", optional = true }
+futures = "0.3"
+libc = "0.2"
+nfsserve = { version = "0.11", optional = true }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ulid = "1"
+urlencoding = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[features]
+default = []
+fuse = ["dep:fuser"]
+nfs = ["dep:nfsserve"]
+vendored-openssl = ["openssl-sys/vendored"]
+
+[dependencies.openssl-sys]
+version = "0.9"
+optional = true
+
+[[bin]]
+name = "llmfs-mount-fuse"
+path = "src/bin/llmfs-mount-fuse.rs"
+required-features = ["fuse"]
+
+[[bin]]
+name = "llmfs-mount-nfs"
+path = "src/bin/llmfs-mount-nfs.rs"
+required-features = ["nfs"]
+
+[[bin]]
+name = "llmfs-mount"
+path = "src/bin/llmfs-mount.rs"
+
+[[bin]]
+name = "llmfs-mount-fuse-sidecar"
+path = "src/bin/llmfs-mount-fuse-sidecar.rs"
+required-features = ["fuse"]

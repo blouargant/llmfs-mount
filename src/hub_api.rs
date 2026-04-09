@@ -335,7 +335,7 @@ pub(crate) async fn send_with_retry(
     context: &str,
     accept_redirects: bool,
 ) -> Result<reqwest::Response> {
-    const MAX_RETRIES: u32 = 2;
+    const MAX_RETRIES: u32 = 5;
     let mut attempt = 0;
     loop {
         attempt += 1;

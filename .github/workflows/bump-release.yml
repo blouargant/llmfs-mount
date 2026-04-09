@@ -26,6 +26,23 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Determine branch and tag suffix
+        id: branch
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+
+          if [ "$BRANCH" = "main" ]; then
+            echo "suffix=" >> "$GITHUB_OUTPUT"
+            echo "kind=release" >> "$GITHUB_OUTPUT"
+          elif [ "$BRANCH" = "validation" ]; then
+            echo "suffix=rc" >> "$GITHUB_OUTPUT"
+            echo "kind=rc" >> "$GITHUB_OUTPUT"
+          else
+            echo "suffix=beta" >> "$GITHUB_OUTPUT"
+            echo "kind=beta" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Detect bump type from commits
         id: detect
         run: |
@@ -78,28 +95,63 @@ jobs:
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
           echo "new=$NEW" >> "$GITHUB_OUTPUT"
 
+      - name: Compute prerelease number
+        id: prerelease
+        if: steps.branch.outputs.suffix != ''
+        run: |
+          SUFFIX="${{ steps.branch.outputs.suffix }}"
+          VERSION="${{ steps.version.outputs.new }}"
+          # Count existing tags matching vA.B.C{suffix}* to determine the next number
+          COUNT=$(git tag -l "v${VERSION}${SUFFIX}*" | wc -l)
+          NUM=$((COUNT + 1))
+          echo "num=$NUM" >> "$GITHUB_OUTPUT"
+
+      - name: Compute full tag
+        id: tag
+        run: |
+          VERSION="${{ steps.version.outputs.new }}"
+          SUFFIX="${{ steps.branch.outputs.suffix }}"
+          if [ -n "$SUFFIX" ]; then
+            TAG="v${VERSION}${SUFFIX}${{ steps.prerelease.outputs.num }}"
+          else
+            TAG="v${VERSION}"
+          fi
+          echo "value=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Tag: $TAG"
+
       - name: Summary
         run: |
           echo "### Release Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| | |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Branch** | ${{ steps.branch.outputs.name }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Kind** | ${{ steps.branch.outputs.kind }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Current** | v${{ steps.version.outputs.current }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **New** | v${{ steps.version.outputs.new }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **New Tag** | ${{ steps.tag.outputs.value }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Bump** | ${{ steps.bump.outputs.type }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Auto-detected** | ${{ steps.detect.outputs.detected }} |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Bump Cargo.toml
+        if: steps.branch.outputs.suffix == ''
         run: sed -i "0,/^version = \".*\"/s//version = \"${{ steps.version.outputs.new }}\"/" Cargo.toml
 
       - name: Update Cargo.lock
+        if: steps.branch.outputs.suffix == ''
         run: cargo generate-lockfile
 
       - name: Commit, tag, and push
         run: |
+          BRANCH="${{ steps.branch.outputs.name }}"
+          TAG="${{ steps.tag.outputs.value }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock
-          git commit -m "chore: release v${{ steps.version.outputs.new }}"
-          git tag "v${{ steps.version.outputs.new }}"
-          git push origin main --tags
+
+          # Only commit version bump on main (final releases)
+          if [ "$BRANCH" = "main" ]; then
+            git add Cargo.toml Cargo.lock
+            git commit -m "chore: release ${TAG}"
+          fi
+
+          git tag "$TAG"
+          git push origin "$BRANCH" --tags

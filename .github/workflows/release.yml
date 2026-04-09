@@ -141,7 +141,8 @@ jobs:
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           TAGS="${{ env.IMAGE }}:${TAG}"
-          if [[ "$TAG" != *"-"* ]]; then
+          # Only tag as :latest for final releases (no rc/beta suffix)
+          if [[ ! "$TAG" =~ (rc|beta)[0-9]+$ ]]; then
             TAGS="${TAGS},${{ env.IMAGE }}:latest"
           fi
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
@@ -170,7 +171,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ github.ref_name }}" artifacts/* \
+          TAG="${{ github.ref_name }}"
+          FLAGS=""
+          # Mark rc and beta tags as prerelease
+          if [[ "$TAG" =~ (rc|beta)[0-9]+$ ]]; then
+            FLAGS="--prerelease"
+          fi
+          gh release create "$TAG" artifacts/* \
             --repo "${{ github.repository }}" \
-            --title "${{ github.ref_name }}" \
-            --generate-notes
+            --title "$TAG" \
+            --generate-notes \
+            $FLAGS

@@ -68,7 +68,7 @@ required-features = ["fuse"]
 maintainer = "Bertrand Louargant <blouargant@users.noreply.github.com>"
 section = "utils"
 priority = "optional"
-depends = "libfuse3-3, ca-certificates"
+depends = "libfuse3-3 | libfuse3-4, ca-certificates"
 assets = [
     ["target/release/llmfs-mount",              "usr/bin/llmfs-mount",              "755"],
     ["target/release/llmfs-mount-fuse",          "usr/bin/llmfs-mount-fuse",          "755"],

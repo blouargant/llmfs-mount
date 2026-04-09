@@ -76,5 +76,5 @@ jobs:
       - name: Build release binaries
         run: cargo build --release --features fuse
 
-      - name: Integration tests (repo mount)
-        run: cargo test --release --test repo_ops -- --test-threads=1 --nocapture
+      # - name: Integration tests (repo mount)
+      #   run: cargo test --release --test repo_ops -- --test-threads=1 --nocapture

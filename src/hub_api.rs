@@ -1487,7 +1487,9 @@ mod tests {
 
     #[tokio::test]
     async fn send_with_retry_gives_up_after_max_retries() {
-        let url = mock_server(vec![503, 503, 503]).await;
+        // MAX_RETRIES retries + the initial attempt = 6 total requests, all 503,
+        // so the final error carries the 503 status rather than a connect error.
+        let url = mock_server(vec![503; 6]).await;
         let client = Client::new();
         let result = send_with_retry(|| client.get(&url), "test", false).await;
         assert!(result.is_err());

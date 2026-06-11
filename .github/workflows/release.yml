@@ -47,6 +47,19 @@ jobs:
       - name: Install packaging tools
         run: cargo install cargo-deb cargo-generate-rpm
 
+      - name: Set version from tag
+        run: |
+          REF="${GITHUB_REF}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            VERSION="${REF#refs/tags/v}"
+            # Normalize prerelease suffix (e.g. 0.3.1rc1 -> 0.3.1-rc1) for valid semver
+            VERSION="$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)(rc|beta)([0-9]+)$/\1-\2\3/')"
+            echo "Deriving package version from tag: $VERSION"
+            sed -i "0,/^version = \".*\"/s//version = \"${VERSION}\"/" Cargo.toml
+          else
+            echo "Not a tag build; using Cargo.toml version as-is"
+          fi
+
       - name: Build
         run: |
           T="${{ matrix.target }}"
@@ -99,6 +112,19 @@ jobs:
       - name: Install macFUSE
         run: brew install macfuse
 
+      - name: Set version from tag
+        run: |
+          REF="${GITHUB_REF}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            VERSION="${REF#refs/tags/v}"
+            # Normalize prerelease suffix (e.g. 0.3.1rc1 -> 0.3.1-rc1) for valid semver
+            VERSION="$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)(rc|beta)([0-9]+)$/\1-\2\3/')"
+            echo "Deriving package version from tag: $VERSION"
+            sed -i "0,/^version = \".*\"/s//version = \"${VERSION}\"/" Cargo.toml
+          else
+            echo "Not a tag build; using Cargo.toml version as-is"
+          fi
+
       - name: Build
         run: |
           T="${{ matrix.target }}"
@@ -146,6 +172,19 @@ jobs:
             TAGS="${TAGS},${{ env.IMAGE }}:latest"
           fi
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Set version from tag
+        run: |
+          REF="${GITHUB_REF}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            VERSION="${REF#refs/tags/v}"
+            # Normalize prerelease suffix (e.g. 0.3.1rc1 -> 0.3.1-rc1) for valid semver
+            VERSION="$(echo "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+)(rc|beta)([0-9]+)$/\1-\2\3/')"
+            echo "Deriving package version from tag: $VERSION"
+            sed -i "0,/^version = \".*\"/s//version = \"${VERSION}\"/" Cargo.toml
+          else
+            echo "Not a tag build; using Cargo.toml version as-is"
+          fi
 
       - uses: docker/build-push-action@v6
         with:

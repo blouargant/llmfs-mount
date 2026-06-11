@@ -159,6 +159,47 @@ llmfs-mount start --hf-token $HF_TOKEN --read-only bucket myuser/my-bucket /tmp/
 llmfs-mount start --hf-token $HF_TOKEN bucket myuser/my-bucket/checkpoints /tmp/ckpts
 ```
 
+### Mount a Gitea repo (read-only)
+
+Mount any repository from a [Gitea](https://about.gitea.com/) instance, self-hosted or public (e.g. [Codeberg](https://codeberg.org)). Set the instance URL with `--gitea-endpoint` (or the `GITEA_ENDPOINT` env var); a token is only needed for private repos (`--gitea-token` or `GITEA_TOKEN`).
+
+```bash
+# Public repo on Codeberg
+llmfs-mount start --gitea-endpoint https://codeberg.org gitea owner/repo /tmp/repo
+
+# Private repo on a self-hosted instance
+llmfs-mount start --gitea-endpoint https://gitea.example.com --gitea-token $GITEA_TOKEN gitea myorg/my-repo /tmp/repo
+
+# Endpoint and token from the environment
+export GITEA_ENDPOINT=https://codeberg.org
+export GITEA_TOKEN=...
+llmfs-mount start gitea owner/repo /tmp/repo
+
+# Specific branch, tag, or commit
+llmfs-mount start --gitea-endpoint https://codeberg.org gitea owner/repo /tmp/repo --revision v1.0
+
+# Subfolder only
+llmfs-mount start --gitea-endpoint https://codeberg.org gitea owner/repo/path/to/dir /tmp/dir
+```
+
+### Mount a GitLab repo (read-only)
+
+Mount any project from [GitLab](https://gitlab.com), gitlab.com or self-hosted. The endpoint defaults to `https://gitlab.com`; override it with `--gitlab-endpoint` (or the `GITLAB_ENDPOINT` env var). A personal or project access token (`--gitlab-token` or `GITLAB_TOKEN`) is only needed for private projects.
+
+```bash
+# Public project on gitlab.com
+llmfs-mount start gitlab owner/repo /tmp/repo
+
+# Private project on a self-hosted instance
+llmfs-mount start --gitlab-endpoint https://gitlab.example.com --gitlab-token $GITLAB_TOKEN gitlab myorg/my-repo /tmp/repo
+
+# Specific branch, tag, or commit
+llmfs-mount start gitlab owner/repo /tmp/repo --revision v1.0
+
+# Subfolder only
+llmfs-mount start gitlab owner/repo/path/to/dir /tmp/dir
+```
+
 ### Manage mounts
 
 ```bash
@@ -239,6 +280,10 @@ llmfs-mount stop /tmp/data          # daemon mounts
 | --- | --- | --- |
 | `--hf-token` | `$HF_TOKEN` | HF API token (required for private repos/buckets) |
 | `--hub-endpoint` | `https://huggingface.co` | Hub API endpoint |
+| `--gitea-endpoint` | `$GITEA_ENDPOINT` | Gitea instance URL (required for `gitea` mounts) |
+| `--gitea-token` | `$GITEA_TOKEN` | Gitea API token (required for private Gitea repos) |
+| `--gitlab-endpoint` | `https://gitlab.com` | GitLab instance URL (`$GITLAB_ENDPOINT`) |
+| `--gitlab-token` | `$GITLAB_TOKEN` | GitLab access token (required for private GitLab projects) |
 | `--cache-dir` | `/tmp/llmfs-mount-cache` | Local cache directory |
 | `--cache-size` | `10000000000` (~10 GB) | Max on-disk chunk cache size in bytes |
 | `--read-only` | `false` | Mount read-only (always on for repos) |

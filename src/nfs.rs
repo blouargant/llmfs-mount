@@ -412,6 +412,41 @@ impl NFSFileSystem for NFSAdapter {
 
 // ── Mount orchestration ────────────────────────────────────────────────
 
+/// Resolve a helper binary that conventionally lives in an sbin directory.
+///
+/// Containers and other minimal environments routinely drop `/sbin` and
+/// `/usr/sbin` from `PATH`, which makes a bare-name `Command` lookup fail with
+/// ENOENT ("No such file or directory") even when the tool is installed. Probe
+/// the canonical sbin locations first and fall back to the bare name (PATH
+/// lookup) when none match.
+fn resolve_sbin(name: &str) -> std::ffi::OsString {
+    for dir in ["/sbin", "/usr/sbin", "/usr/local/sbin"] {
+        let candidate = Path::new(dir).join(name);
+        if candidate.exists() {
+            return candidate.into_os_string();
+        }
+    }
+    std::ffi::OsString::from(name)
+}
+
+/// Turn a failure to *spawn* a mount helper into an actionable error.
+///
+/// A bare `os error 2` from a missing helper is opaque; point the user at the
+/// package that provides it.
+fn mount_helper_spawn_error(name: &str, e: std::io::Error) -> std::io::Error {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "{name} not found in /sbin, /usr/sbin or PATH. On Linux install \
+                 nfs-common (Debian/Ubuntu) or nfs-utils (RHEL/Alpine). ({e})"
+            ),
+        )
+    } else {
+        std::io::Error::new(e.kind(), format!("failed to run {name}: {e}"))
+    }
+}
+
 pub async fn mount_nfs(
     virtual_fs: Arc<VirtualFs>,
     mount_point: &Path,
@@ -454,9 +489,17 @@ pub async fn mount_nfs(
         } else {
             opts = format!("{opts},wsize=1048576");
         }
-        let status = std::process::Command::new("mount_nfs")
+        let mount_nfs = resolve_sbin("mount_nfs");
+        let status = match std::process::Command::new(&mount_nfs)
             .args(["-o", &opts, "127.0.0.1:/", mount_point_str])
-            .status()?;
+            .status()
+        {
+            Ok(status) => status,
+            Err(e) => {
+                server_handle.abort();
+                return Err(mount_helper_spawn_error("mount_nfs", e));
+            }
+        };
         if !status.success() {
             server_handle.abort();
             return Err(std::io::Error::other(format!("mount command failed with {status}")));
@@ -469,14 +512,27 @@ pub async fn mount_nfs(
         if !read_only {
             mount_opts = format!("{mount_opts},wsize=1048576");
         }
-        let output = if unsafe { libc::getuid() } == 0 {
-            std::process::Command::new("mount.nfs")
+        // mount.nfs lives in sbin, which is frequently absent from PATH in
+        // containers and other minimal environments. Resolve an absolute path
+        // so the spawn doesn't depend on PATH containing /sbin or /usr/sbin.
+        let mount_nfs = resolve_sbin("mount.nfs");
+        let result = if unsafe { libc::getuid() } == 0 {
+            std::process::Command::new(&mount_nfs)
                 .args(["-o", &mount_opts, "127.0.0.1:/", mount_point_str])
-                .output()?
+                .output()
         } else {
             std::process::Command::new("sudo")
-                .args(["-n", "mount.nfs", "-o", &mount_opts, "127.0.0.1:/", mount_point_str])
-                .output()?
+                .arg("-n")
+                .arg(&mount_nfs)
+                .args(["-o", &mount_opts, "127.0.0.1:/", mount_point_str])
+                .output()
+        };
+        let output = match result {
+            Ok(output) => output,
+            Err(e) => {
+                server_handle.abort();
+                return Err(mount_helper_spawn_error("mount.nfs", e));
+            }
         };
         if !output.status.success() {
             server_handle.abort();

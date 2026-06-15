@@ -54,9 +54,11 @@ Binaries are available on [GitHub Releases](https://github.com/blouargant/llmfs-
 | Linux aarch64 | `llmfs-mount-aarch64-linux` | `llmfs-mount-nfs-aarch64-linux` | `llmfs-mount-fuse-aarch64-linux` |
 | macOS Apple Silicon | `llmfs-mount-arm64-apple-darwin` | `llmfs-mount-nfs-arm64-apple-darwin` | `llmfs-mount-fuse-arm64-apple-darwin` |
 
-### System dependencies (FUSE only)
+### System dependencies
 
-The NFS backend has no system dependencies. For FUSE:
+**NFS backend**: macOS ships the `mount_nfs` helper in its base system, so nothing to install. On Linux the `mount.nfs` helper is required — install `nfs-common` (Debian/Ubuntu) or `nfs-utils` (RHEL/Alpine). No NFS *server* or `rpcbind` is needed; only the client-side mount helper. llmfs-mount resolves it from `/sbin` and `/usr/sbin` even when those directories are absent from `PATH` (common in containers).
+
+**FUSE backend**:
 
 **Linux**: `sudo apt-get install -y fuse3` (pre-built binaries only need the runtime; building from source also requires `libfuse3-dev`)
 

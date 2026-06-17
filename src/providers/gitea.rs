@@ -52,6 +52,35 @@ struct GiteaContentsResponse {
     last_commit_sha: Option<String>,
 }
 
+/// Decode a JSON API response, producing an actionable error when the body is
+/// not JSON. This typically happens when the request is intercepted by an
+/// SSO/auth proxy that returns a redirect to an HTML login page: reqwest
+/// follows the redirect, the proxy answers `200 OK` with HTML, and the only
+/// symptom would otherwise be an opaque "error decoding response body".
+async fn decode_json<T: serde::de::DeserializeOwned>(resp: reqwest::Response, context: &str) -> Result<T> {
+    let final_url = resp.url().clone();
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    if !content_type.contains("json") {
+        let body = resp.text().await.unwrap_or_default();
+        let preview: String = body.chars().take(200).collect();
+        return Err(Error::hub(format!(
+            "{context}: expected a JSON API response but received '{}' from {final_url}. \
+             The request was likely redirected to a login page — is this Gitea instance behind an SSO/auth proxy? \
+             llmfs-mount needs a URL that serves the Gitea API directly (a Gitea API token cannot satisfy an external SSO proxy). \
+             Response preview: {preview}",
+            if content_type.is_empty() { "<none>" } else { &content_type },
+        )));
+    }
+
+    resp.json::<T>().await.map_err(Error::from)
+}
+
 // ── GiteaClient ────────────────────────────────────────────────────────
 
 pub struct GiteaClient {
@@ -102,7 +131,7 @@ impl GiteaClient {
         )
         .await?;
 
-        let info: GiteaRepoInfo = resp.json().await?;
+        let info: GiteaRepoInfo = decode_json(resp, &format!("gitea repo info {owner}/{repo}")).await?;
         let last_modified = info.updated_at.as_deref().map(mtime_from_str).unwrap_or(UNIX_EPOCH);
 
         // Use the repo's default branch if no revision was specified.
@@ -203,7 +232,7 @@ impl GiteaClient {
 
             let resp = send_with_retry(|| self.auth(self.client.get(&url)), "gitea tree listing", false).await?;
 
-            let tree_resp: GiteaTreeResponse = resp.json().await?;
+            let tree_resp: GiteaTreeResponse = decode_json(resp, "gitea tree listing").await?;
 
             for entry in tree_resp.tree {
                 // Skip submodules.
@@ -321,7 +350,7 @@ impl HubOps for GiteaClient {
             Err(err) => return Err(err),
         };
 
-        let info: GiteaContentsResponse = resp.json().await?;
+        let info: GiteaContentsResponse = decode_json(resp, "gitea head_file").await?;
 
         Ok(Some(HeadFileInfo {
             // No xet hash for Gitea files.

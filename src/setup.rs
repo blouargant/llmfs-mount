@@ -318,6 +318,14 @@ pub fn build(source: Source, options: MountOptions, is_nfs: bool) -> MountSetup 
     }
 }
 
+/// Print an error to stderr and exit cleanly, without dumping a panic
+/// backtrace. Used for expected setup failures (bad config, unreachable or
+/// SSO-gated endpoints) where a stack trace only adds noise.
+fn fail_setup(msg: impl std::fmt::Display) -> ! {
+    eprintln!("error: {msg}");
+    std::process::exit(1);
+}
+
 /// Build a Gitea-backed mount (read-only, HTTP-based content download).
 fn build_gitea(
     runtime: tokio::runtime::Runtime,
@@ -347,12 +355,12 @@ fn build_gitea(
             prefix.to_string(),
         )
         .await
-        .unwrap_or_else(|e| panic!("Failed to initialize Gitea client: {e}"))
+        .unwrap_or_else(|e| fail_setup(format!("Failed to initialize Gitea client: {e}")))
     });
 
     if !client.path_prefix().is_empty() {
         runtime.block_on(async {
-            client.validate_path_prefix().await.unwrap_or_else(|e| panic!("{e}"));
+            client.validate_path_prefix().await.unwrap_or_else(|e| fail_setup(e));
         });
     }
     build_external_provider(runtime, client, mount_point, prefix, "Gitea", options, is_nfs)
